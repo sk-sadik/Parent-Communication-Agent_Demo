@@ -2,6 +2,7 @@
 // No secrets, IDs or internal details belong in these strings.
 
 import type { Language } from "../generated/prisma/enums.js";
+import type { QuestionCategory } from "../services/classifier.js";
 
 export const messages = {
   needCode(): string {
@@ -26,17 +27,25 @@ export const messages = {
     if (language === "te") {
       return (
         `స్వాగతం, ${name}!\n\n` +
-        "మీరు ఇప్పుడు AI సహాయకుడితో మాట్లాడుతున్నారు. ఇది మీ పిల్లల హాజరు, మార్కులు మరియు ఫీజు సమాచారాన్ని " +
-        "అందిస్తుంది. ఇది ఉపాధ్యాయుల స్థానాన్ని భర్తీ చేయదు.\n\n" +
-        "ఈ డెమోలో ఇంకా ప్రశ్నలకు సమాధానాలు అందుబాటులో లేవు. అత్యవసర విషయాల కోసం పాఠశాలను సంప్రదించండి."
+        "మీరు ఇప్పుడు AI సహాయకుడితో మాట్లాడుతున్నారు. ఇది మీ పిల్లల హాజరు, మార్కులు, ఫీజు వివరాలు " +
+        "మరియు పాఠశాల ప్రకటనలను అందిస్తుంది. ఇది ఉపాధ్యాయుల స్థానాన్ని భర్తీ చేయదు.\n\n" +
+        "మీరు ఇలా అడగవచ్చు:\n" +
+        "• నా పిల్లల హాజరు ఎలా ఉంది?\n" +
+        "• మార్కులు ఎలా ఉన్నాయి?\n" +
+        "• ఫీజు బాకీ ఉందా?\n" +
+        "• తరగతికి ఏమైనా ప్రకటనలు ఉన్నాయా?"
       );
     }
 
     return (
       `Welcome, ${name}!\n\n` +
-      "You are talking to an AI assistant. It shares attendance, marks and fee updates for your child " +
-      "and never replaces your child's teacher.\n\n" +
-      "Question answering is not enabled in this demo yet. For urgent matters, please contact the school."
+      "You are talking to an AI assistant. It shares attendance, marks, fee updates and school " +
+      "announcements for your child, and never replaces your child's teacher.\n\n" +
+      "You can ask questions like:\n" +
+      "• What is my child's attendance?\n" +
+      "• How are the marks?\n" +
+      "• Are there any fees due?\n" +
+      "• Any announcements for the class?"
     );
   },
 
@@ -83,18 +92,67 @@ export const messages = {
     );
   },
 
-  guardianPlaceholder(language: Language): string {
+  chooseChild(language: Language): string {
+    if (language === "te") {
+      return "మీరు ఏ పిల్లల గురించి అడుగుతున్నారు? దయచేసి క్రింద ఎంచుకోండి.";
+    }
+    return "Which child do you mean? Please choose below.";
+  },
+
+  otherQuestion(language: Language): string {
     if (language === "te") {
       return (
-        "మీ సందేశానికి ధన్యవాదాలు. ఈ డెమోలో ప్రశ్నలకు సమాధానాలు ఇంకా అందుబాటులో లేవు. " +
-        "అత్యవసర విషయాల కోసం ఉపాధ్యాయుడిని లేదా పాఠశాల కార్యాలయాన్ని సంప్రదించండి."
+        "నేను మీ పిల్లల హాజరు, మార్కులు, ఫీజు మరియు తరగతి ప్రకటనల గురించి సహాయం చేయగలను. " +
+        "ఇతర ప్రశ్నల కోసం దయచేసి మీ పిల్లల ఉపాధ్యాయుడిని సంప్రదించండి. " +
+        "ఈ డెమోలో ఉపాధ్యాయుడికి ప్రశ్న పంపే సౌకర్యం ఇంకా అందుబాటులో లేదు."
       );
     }
-
     return (
-      "Thank you for your message. Question answering is not enabled in this demo yet. " +
-      "For urgent matters, please contact your child's teacher or the school office."
+      "I can help with attendance, marks, fees and class announcements for your child. " +
+      "For other questions, please contact your child's teacher. " +
+      "Sending a question to a teacher is not available in this demo yet."
     );
+  },
+
+  noData(category: QuestionCategory, studentName: string, language: Language): string {
+    const subject =
+      category === "attendance"
+        ? { en: "attendance records", te: "హాజరు నమోదులు" }
+        : category === "marks"
+          ? { en: "marks records", te: "మార్కుల నమోదులు" }
+          : category === "fees"
+            ? { en: "fee records", te: "ఫీజు నమోదులు" }
+            : { en: "approved announcements", te: "ఆమోదించిన ప్రకటనలు" };
+
+    if (language === "te") {
+      return (
+        `${studentName} కోసం ${subject.te} ఇంకా లేవు, కాబట్టి నేను అంచనా వేయలేను. ` +
+        "ఇది తప్పుగా అనిపిస్తే దయచేసి పాఠశాల కార్యాలయాన్ని సంప్రదించండి."
+      );
+    }
+    return (
+      `There are no ${subject.en} for ${studentName} yet, so I cannot calculate an answer. ` +
+      "If this looks wrong, please contact the school office."
+    );
+  },
+
+  noChildren(language: Language): string {
+    if (language === "te") {
+      return (
+        "ఈ ఖాతాకు ధృవీకరించిన పిల్లలు ఎవరూ లింక్ కాలేదు. " +
+        "దయచేసి పాఠశాల కార్యాలయాన్ని సంప్రదించండి."
+      );
+    }
+    return (
+      "No verified child is linked to this account yet. Please contact the school office."
+    );
+  },
+
+  notAllowed(language: Language): string {
+    if (language === "te") {
+      return "మీరు మీ పిల్లల సమాచారాన్ని మాత్రమే చూడగలరు.";
+    }
+    return "You can only see information for your own children.";
   },
 
   teacherPlaceholder(): string {

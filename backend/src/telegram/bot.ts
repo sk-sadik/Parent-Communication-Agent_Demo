@@ -1,6 +1,8 @@
 import { Bot, InlineKeyboard, type Context } from "grammy";
 import type { FastifyBaseLogger } from "fastify";
 import { redeemActivationCode, setGuardianLanguage } from "../services/activationService.js";
+import { answerQuestion, answerQuestionForStudent } from "../services/answerService.js";
+import type { QuestionCategory } from "../services/classifier.js";
 import { resolveActorByChatId } from "../services/authorizationService.js";
 import type { Language } from "../generated/prisma/enums.js";
 import { describeError } from "./errors.js";
@@ -113,12 +115,48 @@ async function handleOtherMessage(ctx: Context, logger: FastifyBaseLogger): Prom
       return;
     }
 
-    if (actor.kind === "guardian") {
-      await ctx.reply(messages.guardianPlaceholder(actor.language));
+    if (actor.kind === "teacher") {
+      await ctx.reply(messages.teacherPlaceholder());
       return;
     }
 
-    await ctx.reply(messages.teacherPlaceholder());
+    const question = ctx.message?.text ?? "";
+    const result = await answerQuestion(chatId, question);
+
+    if (result.kind === "choose_child" && result.options?.length) {
+      const keyboard = new InlineKeyboard();
+      for (const option of result.options) {
+        // The callback only carries ids; the answer service re-checks access.
+        keyboard.text(option.name, `ask:${result.category}:${option.studentId}`).row();
+      }
+      await ctx.reply(result.text, { reply_markup: keyboard });
+      return;
+    }
+
+    await ctx.reply(result.text);
+  });
+}
+
+const ASK_PATTERN = /^ask:(attendance|marks|fees|announcements):([A-Za-z0-9_-]+)$/;
+
+async function handleChildChoice(ctx: Context, logger: FastifyBaseLogger): Promise<void> {
+  await safely(ctx, logger, async () => {
+    const match = Array.isArray(ctx.match) ? ctx.match : [];
+    const category = match[1] as Exclude<QuestionCategory, "other"> | undefined;
+    const studentId = match[2];
+    if (!category || !studentId) return;
+
+    try {
+      await ctx.answerCallbackQuery();
+    } catch {
+      // Expired callback queries are harmless.
+    }
+
+    const chatId = chatIdOf(ctx);
+    if (!chatId) return;
+
+    const result = await answerQuestionForStudent(chatId, studentId, category);
+    await ctx.reply(result.text);
   });
 }
 
@@ -137,6 +175,7 @@ export function createBot({ token, logger }: CreateBotOptions): Bot {
 
   bot.command("start", (ctx) => handleStart(ctx, logger));
   bot.callbackQuery(/^lang:(en|te)$/, (ctx) => handleLanguageChoice(ctx, logger));
+  bot.callbackQuery(ASK_PATTERN, (ctx) => handleChildChoice(ctx, logger));
   bot.on("message", (ctx) => handleOtherMessage(ctx, logger));
 
   return bot;

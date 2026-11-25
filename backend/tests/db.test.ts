@@ -28,7 +28,11 @@ async function counts() {
     prisma.announcement.count(),
     prisma.fee.count(),
     prisma.escalation.count(),
-    prisma.auditLog.count(),
+    // audit_log is append-only and grows with real bot usage, so this test
+    // checks only the two rows the seed itself owns.
+    prisma.auditLog.count({
+      where: { id: { in: ["audit-seed-001", "audit-seed-002"] } },
+    }),
   ]);
 
   return {
