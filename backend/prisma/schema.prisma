@@ -1,0 +1,282 @@
+// Prisma schema for the Parent Communication Agent demo.
+//
+// Prisma 7 note: connection strings are NOT declared here. The CLI
+// (migrations/introspection) reads DIRECT_URL from prisma.config.ts, and the
+// application runtime connects with DATABASE_URL through the PrismaPg adapter
+// in src/db/prisma.ts.
+//
+// Every table except `institute` carries institute_id so that institute
+// scoping can be enforced centrally in the repository/service layer.
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Language {
+  en
+  te
+
+  @@map("language")
+}
+
+enum ActivationRole {
+  guardian
+  teacher
+
+  @@map("activation_role")
+}
+
+enum AttendanceStatus {
+  present
+  absent
+  late
+
+  @@map("attendance_status")
+}
+
+enum AnnouncementStatus {
+  draft
+  approved
+  rejected
+
+  @@map("announcement_status")
+}
+
+enum EscalationStatus {
+  open
+  closed
+
+  @@map("escalation_status")
+}
+
+enum AuditActorType {
+  guardian
+  teacher
+  system
+
+  @@map("audit_actor_type")
+}
+
+model Institute {
+  id         String   @id
+  name       String
+  created_at DateTime @default(now()) @db.Timestamptz(3)
+
+  teachers      Teacher[]
+  students      Student[]
+  guardians     Guardian[]
+  links         GuardianStudentLink[]
+  codes         ActivationCode[]
+  attendance    Attendance[]
+  marks         Mark[]
+  announcements Announcement[]
+  fees          Fee[]
+  escalations   Escalation[]
+  audit_logs    AuditLog[]
+
+  @@map("institute")
+}
+
+model Teacher {
+  id               String   @id
+  institute_id     String
+  name             String
+  assigned_class   String
+  telegram_chat_id String?  @unique
+  created_at       DateTime @default(now()) @db.Timestamptz(3)
+
+  institute        Institute        @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  announcements    Announcement[]
+  activation_codes ActivationCode[]
+
+  @@index([institute_id, assigned_class])
+  @@map("teacher")
+}
+
+model Student {
+  id          String   @id
+  institute_id String
+  name        String
+  class       String
+  roll_number String
+  created_at  DateTime @default(now()) @db.Timestamptz(3)
+
+  institute   Institute             @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  links       GuardianStudentLink[]
+  attendance  Attendance[]
+  marks       Mark[]
+  fees        Fee[]
+  escalations Escalation[]
+
+  @@unique([institute_id, class, roll_number])
+  @@index([institute_id])
+  @@map("student")
+}
+
+model Guardian {
+  id               String   @id
+  institute_id     String
+  name             String
+  language         Language @default(en)
+  telegram_chat_id String?  @unique
+  created_at       DateTime @default(now()) @db.Timestamptz(3)
+
+  institute        Institute             @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  links            GuardianStudentLink[]
+  activation_codes ActivationCode[]
+  escalations      Escalation[]
+
+  @@index([institute_id])
+  @@map("guardian")
+}
+
+model GuardianStudentLink {
+  id             String   @id
+  institute_id   String
+  guardian_id    String
+  student_id     String
+  relationship   String
+  is_fee_contact Boolean  @default(false)
+  verified       Boolean  @default(false)
+  created_at     DateTime @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  guardian  Guardian  @relation(fields: [guardian_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([guardian_id, student_id])
+  @@index([student_id, is_fee_contact])
+  @@index([institute_id])
+  @@map("guardian_student_link")
+}
+
+model ActivationCode {
+  id           String         @id
+  institute_id String
+  code         String         @unique
+  role         ActivationRole
+  guardian_id  String?
+  teacher_id   String?
+  expires_at   DateTime       @db.Timestamptz(3)
+  used_at      DateTime?      @db.Timestamptz(3)
+  created_at   DateTime       @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  guardian  Guardian? @relation(fields: [guardian_id], references: [id], onDelete: Cascade)
+  teacher   Teacher?  @relation(fields: [teacher_id], references: [id], onDelete: Cascade)
+
+  @@index([institute_id, role])
+  @@index([expires_at])
+  @@map("activation_code")
+}
+
+model Attendance {
+  id           String           @id
+  institute_id String
+  student_id   String
+  date         DateTime         @db.Date
+  status       AttendanceStatus
+  created_at   DateTime         @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, date])
+  @@index([institute_id, date])
+  @@index([student_id, status])
+  @@map("attendance")
+}
+
+model Mark {
+  id           String   @id
+  institute_id String
+  student_id   String
+  subject      String
+  test_name    String
+  score        Int
+  max_score    Int
+  date         DateTime @db.Date
+  created_at   DateTime @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, subject, test_name])
+  @@index([institute_id, student_id, date])
+  @@map("marks")
+}
+
+model Announcement {
+  id                    String             @id
+  institute_id          String
+  class                 String
+  text                  String
+  status                AnnouncementStatus @default(draft)
+  created_by_teacher_id String
+  created_at            DateTime           @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  teacher   Teacher   @relation(fields: [created_by_teacher_id], references: [id], onDelete: Cascade)
+
+  @@index([institute_id, class, status])
+  @@index([created_by_teacher_id])
+  @@map("announcement")
+}
+
+model Fee {
+  id           String   @id
+  institute_id String
+  student_id   String
+  amount       Decimal  @db.Decimal(10, 2)
+  due_date     DateTime @db.Date
+  paid         Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([institute_id, paid, due_date])
+  @@index([student_id])
+  @@map("fee")
+}
+
+model Escalation {
+  id            String           @id
+  institute_id  String
+  guardian_id   String
+  student_id    String
+  question      String
+  status        EscalationStatus @default(open)
+  teacher_reply String?
+  created_at    DateTime         @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  guardian  Guardian  @relation(fields: [guardian_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+
+  @@index([institute_id, status])
+  @@index([student_id])
+  @@map("escalation")
+}
+
+// Append-only. Code must never update or delete rows in this table.
+model AuditLog {
+  id           String         @id
+  institute_id String
+  actor_type   AuditActorType
+  actor_id     String?
+  action       String
+  details      Json           @default("{}")
+  created_at   DateTime       @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+
+  @@index([institute_id, created_at])
+  @@index([actor_type, actor_id])
+  @@map("audit_log")
+}
