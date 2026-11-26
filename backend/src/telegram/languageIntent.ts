@@ -14,7 +14,11 @@ const CHANGE_VERB =
 
 const EXPLICIT_CHOICE = /^(english|telugu|ఇంగ్లీష్|తెలుగు)[.!]?$/i;
 
-const TRANSLITERATED_CHOICE = /\b(english|telugu)\s+(lo|lu|meedha|meeda|matladu|matladandi)\b/i;
+const TRANSLITERATED_CHOICE =
+  /\b(english|telugu)\s+(lo|lu|meedha|meeda|matladu|matladandi|cheppu|cheppandi|cheyandi)\b/i;
+
+// "ఇంగ్లీష్" / "తెలుగు" used as a language name, not as the subject Telugu.
+const TELUGU_SCRIPT_LANGUAGE = /ఇంగ్లీష్|తెలుగు/;
 
 // A question about marks in English is not a request to change the UI language.
 const SUBJECT_WORD =
@@ -30,6 +34,12 @@ export function isLanguageChangeRequest(text: string): boolean {
 
   // Telugu script: "భాష" means language.
   if (value.includes("భాష")) {
+    if (/మార్చ/.test(value)) return true;
+    if (!SUBJECT_WORD.test(value) && value.length <= 40) return true;
+  }
+
+  // "ఇంగ్లీష్ లో చెప్పండి" / "తెలుగులో చెప్పు", but not "తెలుగు మార్కులు".
+  if (TELUGU_SCRIPT_LANGUAGE.test(value)) {
     if (/మార్చ/.test(value)) return true;
     if (!SUBJECT_WORD.test(value) && value.length <= 40) return true;
   }
