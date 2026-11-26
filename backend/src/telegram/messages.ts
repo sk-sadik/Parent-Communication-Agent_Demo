@@ -3,6 +3,7 @@
 
 import type { Language } from "../generated/prisma/enums.js";
 import type { QuestionCategory } from "../services/classifier.js";
+import { formatDate } from "../services/format.js";
 
 export const messages = {
   needCode(): string {
@@ -170,6 +171,226 @@ export const messages = {
       return "మీరు మీ పిల్లల సమాచారాన్ని మాత్రమే చూడగలరు.";
     }
     return "You can only see information for your own children.";
+  },
+
+  teacherOnly(language: Language): string {
+    if (language === "te") {
+      return (
+        "ఈ ఆదేశం ఉపాధ్యాయులకు మాత్రమే. " +
+        "మీ పిల్లల హాజరు, మార్కులు, ఫీజు మరియు తరగతి ప్రకటనల గురించి నేను సహాయం చేయగలను."
+      );
+    }
+    return (
+      "This command is for teachers only. " +
+      "I can help you with your child's attendance, marks, fees and class announcements."
+    );
+  },
+
+  teacherNoClass(): string {
+    return (
+      "Your teacher account is not assigned to a class yet. " +
+      "Please contact the school office."
+    );
+  },
+
+  cancelled(): string {
+    return "Cancelled. Send a command to start again.";
+  },
+
+  teacherHelp(): string {
+    return (
+      "Teacher commands:\n" +
+      "• /announce — create a class announcement\n" +
+      "• /escalations — open questions from parents\n" +
+      "• /trigger_fee_reminder — send fee reminders for your class"
+    );
+  },
+
+  announcePrompt(): string {
+    return (
+      "Send the announcement text for your class.\n" +
+      "You can also use /announce followed by the text in one message.\n" +
+      "Send /cancel to stop."
+    );
+  },
+
+  announceEditPrompt(): string {
+    return "Send the replacement announcement text. Send /cancel to stop.";
+  },
+
+  announceEmpty(): string {
+    return "The announcement text was empty. Send /announce to try again.";
+  },
+
+  announceDraft(className: string, text: string, usedAi: boolean): string {
+    return (
+      `Draft announcement for class ${className}` +
+      (usedAi ? " (wording improved by AI)" : "") +
+      `:\n\n${text}\n\n` +
+      "Approve, edit or reject this announcement."
+    );
+  },
+
+  announceRejected(): string {
+    return "Announcement rejected. It will not be sent to parents.";
+  },
+
+  announceNotDraft(): string {
+    return "This announcement can no longer be edited or rejected. It was already approved or rejected.";
+  },
+
+  announceRejectedReminder(): string {
+    return "This announcement was rejected earlier, so it cannot be sent.";
+  },
+
+  announceDeliveryReport(report: {
+    alreadyDelivered: boolean;
+    sent: number;
+    skippedUnlinked: number;
+    failed: number;
+  }): string {
+    if (report.alreadyDelivered) {
+      return "This announcement was already delivered. Nothing was sent again.";
+    }
+
+    const lines = [
+      `Announcement delivered to ${report.sent} parent${report.sent === 1 ? "" : "s"}.`,
+    ];
+    if (report.skippedUnlinked > 0) {
+      lines.push(
+        `${report.skippedUnlinked} parent${report.skippedUnlinked === 1 ? " was" : "s were"} skipped: no linked Telegram chat.`,
+      );
+    }
+    if (report.failed > 0) {
+      lines.push(
+        `Delivery failed for ${report.failed} parent${report.failed === 1 ? "" : "s"}.`,
+      );
+    }
+    return lines.join("\n");
+  },
+
+  escalationForTeacher(studentName: string, question: string): string {
+    return (
+      "New question from a parent\n\n" +
+      `Student: ${studentName}\n` +
+      `Question: ${question}\n\n` +
+      "Tap Reply to answer the parent."
+    );
+  },
+
+  escalationReplyPrompt(studentName: string, question: string): string {
+    return (
+      `Reply to the parent of ${studentName} about:\n\n"${question}"\n\n` +
+      "Send your reply as the next message. Send /cancel to stop."
+    );
+  },
+
+  escalationReplySent(): string {
+    return "Your reply was sent to the parent and the escalation is now closed.";
+  },
+
+  escalationReplyFailed(reason: string): string {
+    return `The escalation was closed and your reply was saved, but it could not be delivered to the parent (${reason}).`;
+  },
+
+  escalationReplyClosed(): string {
+    return "This escalation is already closed.";
+  },
+
+  escalationUnavailable(): string {
+    return "This escalation is already closed or is not for your class.";
+  },
+
+  escalationReplyEmpty(): string {
+    return "The reply was empty. Send your reply as a text message.";
+  },
+
+  escalationReplyWrongClass(): string {
+    return "This escalation is not for your class.";
+  },
+
+  escalationNotFound(): string {
+    return "That escalation no longer exists.";
+  },
+
+  teacherReply(teacherName: string, reply: string, language: Language): string {
+    if (language === "te") {
+      return `${teacherName} గారి సమాధానం:\n\n${reply}`;
+    }
+    return `Reply from ${teacherName}:\n\n${reply}`;
+  },
+
+  escalationList(
+    className: string,
+    items: readonly { studentName: string; question: string; createdAt: Date }[],
+  ): string {
+    if (items.length === 0) {
+      return `No open escalations for class ${className}.`;
+    }
+
+    const lines = [`Open escalations for class ${className}:`];
+    items.forEach((item, index) => {
+      lines.push(
+        `${index + 1}. ${item.studentName} — ${item.question} (${formatDate(
+          item.createdAt,
+          "en",
+        )})`,
+      );
+    });
+    lines.push("", "Tap Reply to answer a parent.");
+    return lines.join("\n");
+  },
+
+  feeReminderHeader(studentName: string, className: string, language: Language): string {
+    if (language === "te") {
+      return `ఫీజు గుర్తుచేయడం: ${studentName} (తరగతి ${className})`;
+    }
+    return `Fee reminder for ${studentName} (class ${className})`;
+  },
+
+  feeReminderFooter(language: Language): string {
+    if (language === "te") {
+      return (
+        "దయచేసి గడువు తేదీలోగా చెల్లించండి. " +
+        "మీరు ఇప్పటికే చెల్లించి ఉంటే పాఠశాల కార్యాలయాన్ని సంప్రదించండి."
+      );
+    }
+    return (
+      "Please pay by the due date. " +
+      "If you have already paid, please contact the school office."
+    );
+  },
+
+  feeReminderReport(report: {
+    sent: number;
+    sentFees: number;
+    students: number;
+    skipped: Record<string, number>;
+  }): string {
+    const lines = [
+      `Fee reminders sent: ${report.sent} message${report.sent === 1 ? "" : "s"} covering ${
+        report.sentFees
+      } fee${report.sentFees === 1 ? "" : "s"} (${report.students} student${
+        report.students === 1 ? "" : "s"
+      } checked).`,
+    ];
+
+    const labels: Record<string, string> = {
+      no_dues: "no dues",
+      no_fee_contact: "no fee-contact guardian",
+      no_telegram: "guardian has no linked Telegram chat",
+      already_sent: "already reminded",
+      delivery_failed: "delivery failed",
+    };
+
+    const skipped = Object.entries(report.skipped)
+      .filter(([, count]) => count > 0)
+      .map(([reason, count]) => `${count} ${labels[reason] ?? reason}`);
+
+    if (skipped.length > 0) {
+      lines.push(`Skipped: ${skipped.join(", ")}.`);
+    }
+    return lines.join("\n");
   },
 
   teacherPlaceholder(): string {

@@ -58,6 +58,8 @@ export interface AnswerResult {
   text: string;
   studentId?: string;
   options?: AnswerOption[];
+  /** Set when a teacher escalation was created, so the bot can notify them. */
+  escalationId?: string;
 }
 
 const MAX_AUDIT_QUESTION = 500;
@@ -294,7 +296,7 @@ export async function answerQuestion(
     const text = messages.escalated(actor.language);
 
     await auditQuestion(actor, category, question, student?.id);
-    await createEscalation({
+    const escalation = await createEscalation({
       actor,
       studentId: student?.id ?? null,
       question,
@@ -302,7 +304,13 @@ export async function answerQuestion(
     });
     await auditAnswer(actor, category, text, student?.id);
 
-    return { kind: "escalated", category, text, studentId: student?.id };
+    return {
+      kind: "escalated",
+      category,
+      text,
+      studentId: student?.id,
+      escalationId: escalation.id,
+    };
   }
 
   const matched = matchStudent(question, students);

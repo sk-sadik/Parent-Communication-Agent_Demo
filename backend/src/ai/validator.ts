@@ -122,14 +122,14 @@ export function allowedDates(facts: ExplanationFacts): Set<string> {
   return dates;
 }
 
-interface ExtractedDates {
+export interface ExtractedDates {
   found: string[];
   /** The text with every matched date blanked out, so years are not counted as
    * stray numbers. */
   rest: string;
 }
 
-function extractDates(text: string): ExtractedDates {
+export function extractDates(text: string): ExtractedDates {
   const found: string[] = [];
   let rest = text;
 

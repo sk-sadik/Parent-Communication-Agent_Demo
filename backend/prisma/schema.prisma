@@ -76,6 +76,7 @@ model Institute {
   marks         Mark[]
   announcements Announcement[]
   fees          Fee[]
+  fee_reminders FeeReminder[]
   escalations   Escalation[]
   audit_logs    AuditLog[]
 
@@ -99,19 +100,20 @@ model Teacher {
 }
 
 model Student {
-  id          String   @id
+  id           String   @id
   institute_id String
-  name        String
-  class       String
-  roll_number String
-  created_at  DateTime @default(now()) @db.Timestamptz(3)
+  name         String
+  class        String
+  roll_number  String
+  created_at   DateTime @default(now()) @db.Timestamptz(3)
 
-  institute   Institute             @relation(fields: [institute_id], references: [id], onDelete: Cascade)
-  links       GuardianStudentLink[]
-  attendance  Attendance[]
-  marks       Mark[]
-  fees        Fee[]
-  escalations Escalation[]
+  institute     Institute             @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  links         GuardianStudentLink[]
+  attendance    Attendance[]
+  marks         Mark[]
+  fees          Fee[]
+  fee_reminders FeeReminder[]
+  escalations   Escalation[]
 
   @@unique([institute_id, class, roll_number])
   @@index([institute_id])
@@ -130,6 +132,7 @@ model Guardian {
   links            GuardianStudentLink[]
   activation_codes ActivationCode[]
   escalations      Escalation[]
+  fee_reminders    FeeReminder[]
 
   @@index([institute_id])
   @@map("guardian")
@@ -219,6 +222,8 @@ model Announcement {
   status                AnnouncementStatus @default(draft)
   created_by_teacher_id String
   created_at            DateTime           @default(now()) @db.Timestamptz(3)
+  // Claimed atomically before delivery, so pressing Approve twice sends once.
+  delivered_at          DateTime?          @db.Timestamptz(3)
 
   institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
   teacher   Teacher   @relation(fields: [created_by_teacher_id], references: [id], onDelete: Cascade)
@@ -237,12 +242,34 @@ model Fee {
   paid         Boolean  @default(false)
   created_at   DateTime @default(now()) @db.Timestamptz(3)
 
-  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
-  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  institute    Institute     @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  student      Student       @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  feeReminders FeeReminder[]
 
   @@index([institute_id, paid, due_date])
   @@index([student_id])
   @@map("fee")
+}
+
+// One row per sent reminder (student + fee + due date). The unique key is the
+// idempotency guard: running the teacher command twice cannot send twice.
+model FeeReminder {
+  id           String   @id
+  institute_id String
+  student_id   String
+  fee_id       String
+  guardian_id  String
+  due_date     DateTime @db.Date
+  sent_at      DateTime @default(now()) @db.Timestamptz(3)
+
+  institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
+  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  fee       Fee       @relation(fields: [fee_id], references: [id], onDelete: Cascade)
+  guardian  Guardian  @relation(fields: [guardian_id], references: [id], onDelete: Cascade)
+
+  @@unique([student_id, fee_id, due_date])
+  @@index([institute_id])
+  @@map("fee_reminder")
 }
 
 model Escalation {

@@ -154,3 +154,89 @@ export async function requireClassAccess(chatId: string, className: string): Pro
     throw new AuthorizationError("Teacher is not assigned to this class");
   }
 }
+
+/** Pure class check for a teacher actor already resolved by chat id. */
+export function assertClassAccess(actor: ResolvedTeacher, className: string): void {
+  if (!actor.assignedClasses.includes(className)) {
+    throw new AuthorizationError("Teacher is not assigned to this class");
+  }
+}
+
+export interface ClassTeacher {
+  id: string;
+  name: string;
+  assignedClass: string;
+  telegramChatId: string | null;
+}
+
+/**
+ * The teacher responsible for a class, always inside one institute. Used to
+ * route a parent's escalation; no other class's teacher can match.
+ */
+export async function getTeacherForClass(
+  instituteId: string,
+  className: string,
+): Promise<ClassTeacher | null> {
+  const teacher = await prisma.teacher.findFirst({
+    where: { institute_id: instituteId, assigned_class: className },
+    orderBy: { created_at: "asc" },
+  });
+  if (!teacher) return null;
+
+  return {
+    id: teacher.id,
+    name: teacher.name,
+    assignedClass: teacher.assigned_class,
+    telegramChatId: teacher.telegram_chat_id,
+  };
+}
+
+export interface ClassStudent {
+  id: string;
+  name: string;
+  class: string;
+}
+
+/** Students in the teacher's own classes, scoped by the same institute. */
+export async function getStudentsForClasses(
+  instituteId: string,
+  classes: readonly string[],
+): Promise<ClassStudent[]> {
+  if (classes.length === 0) return [];
+
+  const students = await prisma.student.findMany({
+    where: { institute_id: instituteId, class: { in: [...classes] } },
+    orderBy: [{ class: "asc" }, { name: "asc" }],
+    select: { id: true, name: true, class: true },
+  });
+
+  return students.map((student) => ({
+    id: student.id,
+    name: student.name,
+    class: student.class,
+  }));
+}
+
+export interface TeacherCommandGuard {
+  ok: true;
+  teacher: ResolvedTeacher;
+}
+
+export interface TeacherCommandRefusal {
+  ok: false;
+  reason: "unknown_chat" | "not_teacher" | "no_class";
+}
+
+/**
+ * Every teacher command starts here. A guardian, or a teacher without an
+ * assigned class, gets a refusal instead of any class data.
+ */
+export async function resolveTeacherCommand(
+  chatId: string,
+): Promise<TeacherCommandGuard | TeacherCommandRefusal> {
+  const actor = await resolveActorByChatId(chatId);
+  if (!actor) return { ok: false, reason: "unknown_chat" };
+  if (actor.kind !== "teacher") return { ok: false, reason: "not_teacher" };
+  if (actor.assignedClasses.length === 0) return { ok: false, reason: "no_class" };
+  return { ok: true, teacher: actor };
+}

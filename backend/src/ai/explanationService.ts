@@ -78,12 +78,12 @@ export function isRetryableAiError(error: unknown): boolean {
   );
 }
 
-interface GenerateOutcome {
+export interface GenerateOutcome {
   result: AiGenerateResult | null;
   reason?: ExplainResult["reason"];
 }
 
-async function generateWithRetry(
+export async function generateWithRetry(
   provider: AiProvider,
   request: AiGenerateRequest,
   promptVersion: string,
