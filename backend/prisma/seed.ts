@@ -244,7 +244,8 @@ export async function seed(): Promise<void> {
   await runWithConcurrency(GUARDIANS, 4, (guardian) =>
     prisma.guardian.upsert({
       where: { id: guardian.id },
-      update: { name: guardian.name, language: guardian.language },
+      // language is the parent's saved choice, so re-seeding must not reset it.
+      update: { name: guardian.name },
       create: {
         id: guardian.id,
         institute_id: INSTITUTE_ID,

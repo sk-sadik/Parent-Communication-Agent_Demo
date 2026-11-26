@@ -249,7 +249,8 @@ model Escalation {
   id            String           @id
   institute_id  String
   guardian_id   String
-  student_id    String
+  // Null when the question arrived before a child could be identified.
+  student_id    String?
   question      String
   status        EscalationStatus @default(open)
   teacher_reply String?
@@ -257,7 +258,7 @@ model Escalation {
 
   institute Institute @relation(fields: [institute_id], references: [id], onDelete: Cascade)
   guardian  Guardian  @relation(fields: [guardian_id], references: [id], onDelete: Cascade)
-  student   Student   @relation(fields: [student_id], references: [id], onDelete: Cascade)
+  student   Student?  @relation(fields: [student_id], references: [id], onDelete: Cascade)
 
   @@index([institute_id, status])
   @@index([student_id])

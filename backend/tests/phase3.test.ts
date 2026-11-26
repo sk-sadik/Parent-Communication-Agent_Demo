@@ -301,7 +301,7 @@ describe("answer service", () => {
 
     expect(result.kind).toBe("answer");
     expect(result.text).toContain("Marks for Aarav Test");
-    expect(result.text).toContain("Based on marks from 1 Oct 2026 – 10 Nov 2026");
+    expect(result.text).toContain("Source: marks from 1 Oct 2026 – 10 Nov 2026");
     expect(result.text).toContain("Mathematics: average 56.7% (improving)");
     expect(result.text).toContain("English: average 70% (steady)");
   });
@@ -360,12 +360,17 @@ describe("answer service", () => {
     expect(result.text).toContain("90%");
   });
 
-  it("tells the guardian that other questions go to the teacher", async () => {
+  it("escalates unsupported questions to the teacher", async () => {
     const result = await answerQuestion(CHAT_G1, "Can you call me?");
 
-    expect(result.kind).toBe("other");
-    expect(result.text).toContain("please contact your child's teacher");
-    expect(result.text).toContain("not available in this demo yet");
+    expect(result.kind).toBe("escalated");
+    expect(result.text).toContain("a teacher will reply");
+
+    const escalation = await prisma.escalation.findFirst({
+      where: { institute_id: INST_B, guardian_id: "p3-g1", status: "open" },
+      orderBy: { created_at: "desc" },
+    });
+    expect(escalation?.question).toBe("Can you call me?");
   });
 
   it("returns a polite message for an unknown chat and no data for teachers", async () => {

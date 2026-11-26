@@ -11,35 +11,18 @@ import type {
   Trend,
 } from "../services/calculations.js";
 import { formatAmount, formatDate, formatDateRange, formatPercent } from "../services/format.js";
+import { subjectLabel } from "../services/subjects.js";
 
 interface StudentLine {
   name: string;
   class: string;
 }
 
-const SUBJECTS: Record<string, { en: string; te: string }> = {
-  mathematics: { en: "Mathematics", te: "గణితం" },
-  maths: { en: "Mathematics", te: "గణితం" },
-  math: { en: "Mathematics", te: "గణితం" },
-  english: { en: "English", te: "ఇంగ్లీష్" },
-  science: { en: "Science", te: "సైన్స్" },
-  telugu: { en: "Telugu", te: "తెలుగు" },
-  social: { en: "Social", te: "సాంఘిక" },
-  "social studies": { en: "Social Studies", te: "సాంఘిక శాస్త్రం" },
-  hindi: { en: "Hindi", te: "హిందీ" },
-};
-
 const TRENDS: Record<Trend, { en: string; te: string }> = {
   up: { en: "improving", te: "మెరుగుపడుతోంది" },
   down: { en: "declining", te: "తగ్గుతోంది" },
   flat: { en: "steady", te: "స్థిరంగా ఉంది" },
 };
-
-function subjectLabel(subject: string, language: Language): string {
-  const entry = SUBJECTS[subject.trim().toLowerCase()];
-  if (!entry) return subject;
-  return entry[language];
-}
 
 export function attendanceReply(
   student: StudentLine,
@@ -66,21 +49,42 @@ export function attendanceReply(
   );
 }
 
-export function marksReply(
-  student: StudentLine,
-  summary: MarksSummary,
-  language: Language,
-): string {
-  const range = formatDateRange(summary.from, summary.to, language);
-  const testCount = Math.max(...summary.subjects.map((subject) => subject.tests));
+function testCountOf(summary: MarksSummary): number {
+  return Math.max(0, ...summary.subjects.map((subject) => subject.tests));
+}
 
-  const lines = summary.subjects.map((subject) => {
+function subjectBullets(summary: MarksSummary, language: Language): string[] {
+  return summary.subjects.map((subject) => {
     const label = subjectLabel(subject.subject, language);
     const trend = TRENDS[subject.trend][language];
     return `• ${label}: ${language === "te" ? "సగటు" : "average"} ${formatPercent(
       subject.average,
     )} (${trend})`;
   });
+}
+
+function marksHeader(student: StudentLine, language: Language): string {
+  return language === "te"
+    ? `${student.name} మార్కులు (తరగతి ${student.class})`
+    : `Marks for ${student.name} (class ${student.class})`;
+}
+
+function marksSource(summary: MarksSummary, language: Language): string {
+  const range = formatDateRange(summary.from, summary.to, language);
+  const testCount = testCountOf(summary);
+  return language === "te"
+    ? `మూలం: ${range} మార్కులు (సబ్జెక్టుకు ${testCount} పరీక్షలు).`
+    : `Source: marks from ${range} (${testCount} tests per subject).`;
+}
+
+export function marksReply(
+  student: StudentLine,
+  summary: MarksSummary,
+  language: Language,
+): string {
+  const range = formatDateRange(summary.from, summary.to, language);
+  const testCount = testCountOf(summary);
+  const lines = subjectBullets(summary, language);
 
   if (language === "te") {
     return (
@@ -95,6 +99,98 @@ export function marksReply(
     `Based on marks from ${range} (${testCount} tests per subject):\n` +
     lines.join("\n")
   );
+}
+
+/**
+ * Marks answer with a calculated facts block, the validated AI explanation and
+ * the source line at the end.
+ */
+export function groundedMarksReply(
+  student: StudentLine,
+  summary: MarksSummary,
+  explanation: string,
+  language: Language,
+): string {
+  return [
+    [marksHeader(student, language), ...subjectBullets(summary, language)].join("\n"),
+    explanation,
+    marksSource(summary, language),
+  ].join("\n\n");
+}
+
+function attendanceBullet(attendance: AttendanceSummary, language: Language): string {
+  return language === "te"
+    ? `• హాజరు: ${formatPercent(attendance.percentage)} (${attendance.recordedDays} పాఠశాల రోజులు)`
+    : `• Attendance: ${formatPercent(attendance.percentage)} (${attendance.recordedDays} school days)`;
+}
+
+function progressSource(
+  summary: MarksSummary,
+  attendance: AttendanceSummary | null,
+  language: Language,
+): string {
+  const marksRange = formatDateRange(summary.from, summary.to, language);
+  const testCount = testCountOf(summary);
+
+  if (language === "te") {
+    const attendancePart = attendance
+      ? `; ${formatDateRange(attendance.from, attendance.to, language)} హాజరు (${attendance.recordedDays} పాఠశాల రోజులు)`
+      : "";
+    return `మూలం: ${marksRange} మార్కులు (సబ్జెక్టుకు ${testCount} పరీక్షలు)${attendancePart}.`;
+  }
+
+  const attendancePart = attendance
+    ? `; attendance from ${formatDateRange(attendance.from, attendance.to, language)} (${
+        attendance.recordedDays
+      } school days)`
+    : "";
+  return `Source: marks from ${marksRange} (${testCount} tests per subject)${attendancePart}.`;
+}
+
+function progressBlock(
+  student: StudentLine,
+  summary: MarksSummary,
+  attendance: AttendanceSummary | null,
+  language: Language,
+): string {
+  const header =
+    language === "te"
+      ? `${student.name} ప్రగతి (తరగతి ${student.class})`
+      : `Progress for ${student.name} (class ${student.class})`;
+  const lines = [header, ...subjectBullets(summary, language)];
+  if (attendance) lines.push(attendanceBullet(attendance, language));
+  return lines.join("\n");
+}
+
+/** Progress answer with facts, validated explanation and source line. */
+export function groundedProgressReply(
+  student: StudentLine,
+  summary: MarksSummary,
+  attendance: AttendanceSummary | null,
+  explanation: string,
+  language: Language,
+): string {
+  return [
+    progressBlock(student, summary, attendance, language),
+    explanation,
+    progressSource(summary, attendance, language),
+  ].join("\n\n");
+}
+
+/**
+ * Deterministic progress answer used when the AI is unavailable. Phase 3 had no
+ * progress template, so this mirrors the marks template plus attendance.
+ */
+export function progressReply(
+  student: StudentLine,
+  summary: MarksSummary,
+  attendance: AttendanceSummary | null,
+  language: Language,
+): string {
+  return [
+    progressBlock(student, summary, attendance, language),
+    progressSource(summary, attendance, language),
+  ].join("\n\n");
 }
 
 export function feesReply(

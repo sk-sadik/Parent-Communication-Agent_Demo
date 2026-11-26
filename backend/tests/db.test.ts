@@ -27,7 +27,9 @@ async function counts() {
     prisma.mark.count(),
     prisma.announcement.count(),
     prisma.fee.count(),
-    prisma.escalation.count(),
+    // Escalations are created by real bot usage too, so count only the two the
+    // seed itself owns.
+    prisma.escalation.count({ where: { id: { in: ["esc-001", "esc-002"] } } }),
     // audit_log is append-only and grows with real bot usage, so this test
     // checks only the two rows the seed itself owns.
     prisma.auditLog.count({
@@ -92,7 +94,24 @@ describe("seed data", () => {
     }
 
     expect(guardians.filter((guardian) => guardian.links.length === 2)).toHaveLength(2);
-    expect(guardians.filter((guardian) => guardian.language === "te")).toHaveLength(1);
+    // Language is mutable at runtime (parents can switch it), so the seed only
+    // guarantees a valid value, not a particular distribution.
+    expect(guardians.every((guardian) => ["en", "te"].includes(guardian.language))).toBe(true);
+  });
+
+  it("keeps a parent's saved language when the seed is re-run", async () => {
+    const original = await prisma.guardian.findUniqueOrThrow({ where: { id: "gdn-004" } });
+
+    await prisma.guardian.update({ where: { id: "gdn-004" }, data: { language: "te" } });
+    await seed();
+
+    const after = await prisma.guardian.findUniqueOrThrow({ where: { id: "gdn-004" } });
+    expect(after.language).toBe("te");
+
+    await prisma.guardian.update({
+      where: { id: "gdn-004" },
+      data: { language: original.language },
+    });
   });
 
   it("keeps activation codes unique, unused and valid for 30 days", async () => {

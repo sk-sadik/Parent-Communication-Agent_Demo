@@ -6,6 +6,7 @@
 export type QuestionCategory =
   | "attendance"
   | "marks"
+  | "progress"
   | "fees"
   | "announcements"
   | "other";
@@ -19,6 +20,18 @@ interface CategoryRule {
 }
 
 const RULES: CategoryRule[] = [
+  {
+    category: "progress",
+    latin: [
+      /\bhow (is|are) (my|our) (child|children|kid|ward|son|daughter) doing\b/,
+      /\boverall (progress|performance|development)\b/,
+      /\bprogress\b/,
+      /\bdoing in (school|class|studies)\b/,
+      /\bschool performance\b/,
+      /\bpragathi\b/,
+    ],
+    telugu: ["ప్రగతి", "మొత్తం పనితీరు", "ఎలా ఉన్నారు"],
+  },
   {
     category: "attendance",
     latin: [
@@ -108,8 +121,8 @@ function countMatches(rule: CategoryRule, text: string): number {
 
 /**
  * Classifies a parent's message. The category with the most keyword hits wins;
- * ties follow the order attendance, marks, fees, announcements so a question
- * such as "did my child attend the exam" is treated as attendance.
+ * ties follow the rule order (progress before attendance, marks, fees and
+ * announcements), so "how is my child doing in maths" is treated as progress.
  */
 export function classifyQuestion(message: string): QuestionCategory {
   const text = message.toLowerCase().trim();
@@ -132,6 +145,7 @@ export function classifyQuestion(message: string): QuestionCategory {
 export const QUESTION_CATEGORIES: QuestionCategory[] = [
   "attendance",
   "marks",
+  "progress",
   "fees",
   "announcements",
 ];

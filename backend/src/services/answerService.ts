@@ -1,15 +1,22 @@
-﻿// Rule-based question answering. No AI calls: every number comes from
-// calculations over authorized database rows.
+﻿// Question answering.
+//
+// Simple lookups (attendance, fees, announcements) stay deterministic. Marks and
+// progress questions get the Phase 3 facts plus a validated AI explanation.
+// Sensitive or unsupported questions become an escalation for a teacher.
 //
 // Telegram-independent: the bot calls these functions and only sends the text.
 
 import type { Language } from "../generated/prisma/enums.js";
+import { explain } from "../ai/explanationService.js";
 import { messages } from "../telegram/messages.js";
 import {
   announcementsReply,
   attendanceReply,
   feesReply,
+  groundedMarksReply,
+  groundedProgressReply,
   marksReply,
+  progressReply,
 } from "../telegram/replies.js";
 import { classifyQuestion, type QuestionCategory } from "./classifier.js";
 import {
@@ -20,6 +27,8 @@ import {
   type ResolvedGuardian,
 } from "./authorizationService.js";
 import { recordAudit } from "./auditService.js";
+import { createEscalation } from "./escalationService.js";
+import { routeQuestion } from "./routing.js";
 import {
   loadAnnouncementFacts,
   loadAttendanceFacts,
@@ -30,6 +39,7 @@ import {
 export type AnswerKind =
   | "answer"
   | "choose_child"
+  | "escalated"
   | "other"
   | "no_data"
   | "no_children"
@@ -77,6 +87,7 @@ function auditAnswer(
   category: QuestionCategory,
   text: string,
   studentId?: string,
+  aiUsed?: boolean,
 ): Promise<void> {
   return recordAudit({
     instituteId: actor.instituteId,
@@ -88,6 +99,7 @@ function auditAnswer(
       category,
       text,
       ...(studentId ? { student_id: studentId } : {}),
+      ...(aiUsed === undefined ? {} : { ai_used: aiUsed }),
     },
   });
 }
@@ -121,6 +133,7 @@ async function answerForStudent(
 
   let text = "";
   let kind: AnswerKind = "answer";
+  let aiUsed: boolean | undefined;
 
   try {
     // Every loader starts with requireStudentAccess, so the student id can
@@ -139,11 +152,65 @@ async function answerForStudent(
 
       case "marks": {
         const facts = await loadMarksFacts(chatId, studentId);
-        if (facts.summary) {
-          text = marksReply(facts.student, facts.summary, language);
-        } else {
+        if (!facts.summary) {
           text = messages.noData(category, facts.student.name, language);
           kind = "no_data";
+          break;
+        }
+
+        const explained = await explain({
+          guardianId: guardian.guardianId,
+          language,
+          focus: "marks",
+          marks: facts.summary,
+          attendance: null,
+        });
+
+        if (explained.explanation) {
+          text = groundedMarksReply(facts.student, facts.summary, explained.explanation, language);
+          aiUsed = true;
+        } else {
+          // Never change the Phase 3 deterministic answer.
+          text = marksReply(facts.student, facts.summary, language);
+          aiUsed = false;
+        }
+        break;
+      }
+
+      case "progress": {
+        const marksFacts = await loadMarksFacts(chatId, studentId);
+        if (!marksFacts.summary) {
+          text = messages.noData("marks", marksFacts.student.name, language);
+          kind = "no_data";
+          break;
+        }
+
+        const attendanceFacts = await loadAttendanceFacts(chatId, studentId);
+        const explained = await explain({
+          guardianId: guardian.guardianId,
+          language,
+          focus: "progress",
+          marks: marksFacts.summary,
+          attendance: attendanceFacts.summary,
+        });
+
+        if (explained.explanation) {
+          text = groundedProgressReply(
+            marksFacts.student,
+            marksFacts.summary,
+            attendanceFacts.summary,
+            explained.explanation,
+            language,
+          );
+          aiUsed = true;
+        } else {
+          text = progressReply(
+            marksFacts.student,
+            marksFacts.summary,
+            attendanceFacts.summary,
+            language,
+          );
+          aiUsed = false;
         }
         break;
       }
@@ -187,7 +254,7 @@ async function answerForStudent(
   if (questionText.trim()) {
     await auditQuestion(guardian, category, questionText, studentId);
   }
-  await auditAnswer(guardian, category, text, studentId);
+  await auditAnswer(guardian, category, text, studentId, aiUsed);
 
   return { kind, category, text, studentId };
 }
@@ -209,7 +276,8 @@ export async function answerQuestion(
     return { kind: "teacher", category: "other", text: messages.teacherPlaceholder() };
   }
 
-  const category = classifyQuestion(question);
+  const decision = routeQuestion(question);
+  const category = decision.category;
   const students = await getAuthorizedStudents(chatId);
 
   if (students.length === 0) {
@@ -219,11 +287,22 @@ export async function answerQuestion(
     return { kind: "no_children", category, text };
   }
 
-  if (category === "other") {
-    const text = messages.otherQuestion(actor.language);
-    await auditQuestion(actor, category, question);
-    await auditAnswer(actor, category, text);
-    return { kind: "other", category, text };
+  if (decision.route === "escalate") {
+    // Sensitive or unsupported: never answered by AI. A teacher gets the record.
+    const named = matchStudent(question, students);
+    const student = named ?? (students.length === 1 ? students[0] : null);
+    const text = messages.escalated(actor.language);
+
+    await auditQuestion(actor, category, question, student?.id);
+    await createEscalation({
+      actor,
+      studentId: student?.id ?? null,
+      question,
+      reason: decision.sensitiveReason,
+    });
+    await auditAnswer(actor, category, text, student?.id);
+
+    return { kind: "escalated", category, text, studentId: student?.id };
   }
 
   const matched = matchStudent(question, students);
@@ -247,7 +326,9 @@ export async function answerQuestion(
     return { kind: "no_children", category, text };
   }
 
-  return answerForStudent(chatId, actor, category, student.id, question);
+  // At this point the route is deterministic or AI, never escalate.
+  const answerCategory = category === "other" ? "marks" : category;
+  return answerForStudent(chatId, actor, answerCategory, student.id, question);
 }
 
 /**

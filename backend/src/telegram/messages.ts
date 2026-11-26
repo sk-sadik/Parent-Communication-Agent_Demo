@@ -33,7 +33,8 @@ export const messages = {
         "• నా పిల్లల హాజరు ఎలా ఉంది?\n" +
         "• మార్కులు ఎలా ఉన్నాయి?\n" +
         "• ఫీజు బాకీ ఉందా?\n" +
-        "• తరగతికి ఏమైనా ప్రకటనలు ఉన్నాయా?"
+        "• తరగతికి ఏమైనా ప్రకటనలు ఉన్నాయా?\n\n" +
+        "భాష మార్చడానికి /language పంపండి."
       );
     }
 
@@ -45,7 +46,8 @@ export const messages = {
       "• What is my child's attendance?\n" +
       "• How are the marks?\n" +
       "• Are there any fees due?\n" +
-      "• Any announcements for the class?"
+      "• Any announcements for the class?\n\n" +
+      "To change your language, send /language."
     );
   },
 
@@ -72,8 +74,10 @@ export const messages = {
   alreadyLinked(): string {
     return (
       "This Telegram account is already linked to a school account, so the new code was not used.\n" +
-      "If you need to change it, please contact the school office.\n\n" +
-      "ఈ టెలిగ్రామ్ ఖాతా ఇప్పటికే పాఠశాల ఖాతాకు లింక్ అయింది. మార్పు కోసం పాఠశాల కార్యాలయాన్ని సంప్రదించండి."
+      "If you need to change it, please contact the school office.\n" +
+      "To change your language, send /language.\n\n" +
+      "ఈ టెలిగ్రామ్ ఖాతా ఇప్పటికే పాఠశాల ఖాతాకు లింక్ అయింది. మార్పు కోసం పాఠశాల కార్యాలయాన్ని సంప్రదించండి.\n" +
+      "భాష మార్చడానికి /language పంపండి."
     );
   },
 
@@ -114,11 +118,24 @@ export const messages = {
     );
   },
 
+  escalated(language: Language): string {
+    if (language === "te") {
+      return (
+        "మీ ప్రశ్నకు ధన్యవాదాలు. మీ ప్రశ్నను మీ పిల్లల ఉపాధ్యాయుడికి పంపాను. " +
+        "ఉపాధ్యాయుడు ఇక్కడ మీకు సమాధానం ఇస్తారు. ఇలాంటి ప్రశ్నలకు నేను స్వయంగా సమాధానం ఇవ్వలేను."
+      );
+    }
+    return (
+      "Thank you for telling me. I have sent your question to your child's teacher, " +
+      "and a teacher will reply to you here. I cannot answer this kind of question myself."
+    );
+  },
+
   noData(category: QuestionCategory, studentName: string, language: Language): string {
     const subject =
       category === "attendance"
         ? { en: "attendance records", te: "హాజరు నమోదులు" }
-        : category === "marks"
+        : category === "marks" || category === "progress"
           ? { en: "marks records", te: "మార్కుల నమోదులు" }
           : category === "fees"
             ? { en: "fee records", te: "ఫీజు నమోదులు" }

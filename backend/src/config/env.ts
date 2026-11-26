@@ -15,6 +15,8 @@ const envSchema = z.object({
   DIRECT_URL: z.string().min(1, "DIRECT_URL is required"),
   PORT: z.coerce.number().int().positive().default(3000),
   AI_MAX_OUTPUT_TOKENS: z.coerce.number().int().positive().default(600),
+  AI_DAILY_LIMIT: z.coerce.number().int().positive().default(20),
+  AI_TIMEOUT_MS: z.coerce.number().int().positive().default(20000),
   TELEGRAM_BOT_TOKEN: optionalString,
   GEMINI_API_KEY: optionalString,
   AI_MODEL: optionalString,

@@ -229,6 +229,24 @@ describe("activation code redemption", () => {
     expect(audits).toBe(1);
   });
 
+  it("switches an already linked guardian from Telugu back to English", async () => {
+    await setGuardianLanguage("test-chat-g3", "te");
+
+    const result = await setGuardianLanguage("test-chat-g3", "en");
+    expect(result).toEqual({ ok: true, name: "Test Parent Three", language: "en" });
+
+    const guardian = await prisma.guardian.findUnique({ where: { id: "gdn-tb3" } });
+    expect(guardian?.language).toBe("en");
+
+    const audits = await prisma.auditLog.findMany({
+      where: { institute_id: INST_B, action: "guardian.language_set", actor_id: "gdn-tb3" },
+      select: { details: true },
+    });
+    expect(
+      audits.some((audit) => (audit.details as { to?: string }).to === "en"),
+    ).toBe(true);
+  });
+
   it("refuses language selection for an unlinked chat", async () => {
     await expect(setGuardianLanguage("test-chat-nobody", "en")).resolves.toEqual({
       ok: false,

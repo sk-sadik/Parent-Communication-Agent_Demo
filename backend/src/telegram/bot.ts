@@ -6,6 +6,7 @@ import type { QuestionCategory } from "../services/classifier.js";
 import { resolveActorByChatId } from "../services/authorizationService.js";
 import type { Language } from "../generated/prisma/enums.js";
 import { describeError } from "./errors.js";
+import { isLanguageChangeRequest } from "./languageIntent.js";
 import { messages } from "./messages.js";
 
 export interface CreateBotOptions {
@@ -47,8 +48,27 @@ async function handleStart(ctx: Context, logger: FastifyBaseLogger): Promise<voi
     const raw = typeof ctx.match === "string" ? ctx.match.trim() : "";
     const code = raw.split(/\s+/)[0] ?? "";
 
+    // A linked parent who sends /start again wants the language options, not a
+    // new activation code.
+    const actor = await resolveActorByChatId(chatId);
+
     if (!code) {
+      if (actor?.kind === "guardian") {
+        await ctx.reply(messages.languagePrompt(actor.name), {
+          reply_markup: languageKeyboard(),
+        });
+        return;
+      }
+      if (actor?.kind === "teacher") {
+        await ctx.reply(messages.teacherPlaceholder());
+        return;
+      }
       await ctx.reply(messages.needCode());
+      return;
+    }
+
+    if (actor) {
+      await ctx.reply(messages.alreadyLinked());
       return;
     }
 
@@ -101,6 +121,27 @@ async function handleLanguageChoice(ctx: Context, logger: FastifyBaseLogger): Pr
   });
 }
 
+async function handleLanguageCommand(ctx: Context, logger: FastifyBaseLogger): Promise<void> {
+  await safely(ctx, logger, async () => {
+    const chatId = chatIdOf(ctx);
+    if (!chatId) return;
+
+    const actor = await resolveActorByChatId(chatId);
+    if (!actor) {
+      await ctx.reply(messages.unknownChat());
+      return;
+    }
+    if (actor.kind === "teacher") {
+      await ctx.reply(messages.teacherPlaceholder());
+      return;
+    }
+
+    await ctx.reply(messages.languagePrompt(actor.name), {
+      reply_markup: languageKeyboard(),
+    });
+  });
+}
+
 async function handleOtherMessage(ctx: Context, logger: FastifyBaseLogger): Promise<void> {
   await safely(ctx, logger, async () => {
     const chatId = chatIdOf(ctx);
@@ -121,6 +162,16 @@ async function handleOtherMessage(ctx: Context, logger: FastifyBaseLogger): Prom
     }
 
     const question = ctx.message?.text ?? "";
+
+    // "change language to English", "భాష మార్చండి", ... show the picker instead
+    // of being classified as a school question.
+    if (isLanguageChangeRequest(question)) {
+      await ctx.reply(messages.languagePrompt(actor.name), {
+        reply_markup: languageKeyboard(),
+      });
+      return;
+    }
+
     const result = await answerQuestion(chatId, question);
 
     if (result.kind === "choose_child" && result.options?.length) {
@@ -137,7 +188,7 @@ async function handleOtherMessage(ctx: Context, logger: FastifyBaseLogger): Prom
   });
 }
 
-const ASK_PATTERN = /^ask:(attendance|marks|fees|announcements):([A-Za-z0-9_-]+)$/;
+const ASK_PATTERN = /^ask:(attendance|marks|progress|fees|announcements):([A-Za-z0-9_-]+)$/;
 
 async function handleChildChoice(ctx: Context, logger: FastifyBaseLogger): Promise<void> {
   await safely(ctx, logger, async () => {
@@ -174,6 +225,8 @@ export function createBot({ token, logger }: CreateBotOptions): Bot {
   });
 
   bot.command("start", (ctx) => handleStart(ctx, logger));
+  bot.command("language", (ctx) => handleLanguageCommand(ctx, logger));
+  bot.command("lang", (ctx) => handleLanguageCommand(ctx, logger));
   bot.callbackQuery(/^lang:(en|te)$/, (ctx) => handleLanguageChoice(ctx, logger));
   bot.callbackQuery(ASK_PATTERN, (ctx) => handleChildChoice(ctx, logger));
   bot.on("message", (ctx) => handleOtherMessage(ctx, logger));

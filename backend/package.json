@@ -10,6 +10,8 @@
     "typecheck": "prisma generate && tsc -p tsconfig.check.json",
     "start": "node dist/server.js",
     "test": "vitest run",
+    "ai:eval": "tsx tests/ai-eval/run.ts",
+    "ai:eval:real": "tsx tests/ai-eval/run.ts --real",
     "prisma:validate": "prisma validate",
     "prisma:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
@@ -18,6 +20,7 @@
     "db:summary": "tsx prisma/summary.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "@neon/config": "^1.14.7",
     "@neon/env": "^2.1.10",
     "@prisma/adapter-pg": "^7.10.1",

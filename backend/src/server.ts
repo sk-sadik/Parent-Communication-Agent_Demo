@@ -1,4 +1,5 @@
 import type { Bot } from "grammy";
+import { getAiProvider, setAiLogger } from "./ai/runtime.js";
 import { buildApp } from "./app.js";
 import { env } from "./config/env.js";
 import { prisma } from "./db/prisma.js";
@@ -6,6 +7,17 @@ import { createBot } from "./telegram/bot.js";
 import { describeError } from "./telegram/errors.js";
 
 const app = buildApp();
+
+// AI logs never include the key or prompt text.
+setAiLogger({
+  info: (message) => app.log.info(message),
+  warn: (message) => app.log.warn(message),
+  error: (message) => app.log.error(message),
+});
+
+// Logs "AI disabled" once at startup when the key or model is missing. The bot
+// still works: marks/progress questions use the Phase 3 template answer.
+getAiProvider();
 
 // The bot is optional: without a token the API still runs, so the health check
 // and the database work in local development.
